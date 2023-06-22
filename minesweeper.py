@@ -2,6 +2,8 @@ import time
 import numpy as np
 import random as rd
 
+
+#Function to gather statistics about the solving skills of the algo
 def statistiques_resolution(taille,Nbr_de_mines,taille_de_l_echantillon):
     L_tour = [0 for i in range(0,taille*taille)]
     L_tour_defaite = [0 for i in range(0,taille*taille)]
@@ -58,6 +60,7 @@ def statistiques_resolution(taille,Nbr_de_mines,taille_de_l_echantillon):
     #print(L_tour_defaite)
     return("Termine")
 
+#Guesses instead of getting stuck when it can't make a logical decision
 def jouer_machine_plus_max(jeu_ordi,check_logique_elementaire,taille,nbr_mines):
     tour = 0
     drapeaux_places = 0
@@ -185,9 +188,7 @@ def compteur_drapeau(X_a_jouer,Y_a_jouer,info_donnee,taille):
             X_a_jouer = X_a_jouer + [X_compteur[i]]
             Y_a_jouer = Y_a_jouer + [Y_compteur[i]]
             
-    return(X_a_jouer,Y_a_jouer)
-                   
-                    
+    return(X_a_jouer,Y_a_jouer)     
 
 def check_logique_elementaire(info_donnee):
     Xc = []
@@ -209,6 +210,7 @@ def check_logique_elementaire(info_donnee):
             
     return (cases_a_drapeaux_X,cases_a_drapeaux_Y)
 
+#Function to solve a grid randomly, for benchmark
 def resoudre_alea(info_donnee_au_joueur,taille):
     Lix = []
     Liy = []
@@ -220,7 +222,6 @@ def resoudre_alea(info_donnee_au_joueur,taille):
     a = rd.randint(0,len(Liy)-1)
     return(Lix[a],Liy[a])
 
-# Trouver une condition de terminaison pour le while 
 def jouer_machine(jeu_ordi,check_logique_elementaire,taille,nbr_mines):
     drapeaux_places = 0
     mort = False
@@ -298,7 +299,7 @@ def jouer_machine(jeu_ordi,check_logique_elementaire,taille,nbr_mines):
     else:
         return("grille resolue")
 
-
+#Basic logical rules to solve the grid, gets stuck when it has to guess
 def jouer_machine_plus(jeu_ordi,check_logique_elementaire,taille,nbr_mines):
     drapeaux_places = 0
     mort = False
@@ -423,8 +424,6 @@ def acote(L,i,j):
     return A
 
 def setupgrille(n,m,a,b):
-
-    
     casesconnues = np.array([[0 for i in range(n)] for j in range(n)])
     minesacote = np.array([[0 for i in range(n)] for j in range(n)])
     grille =  np.array([[0 for i in range(n)] for j in range(n)])   #génération des grilles
@@ -494,11 +493,7 @@ def deplacebombe(L,M,i,j,taille):
 
                         gennbrvoisin(L,M,k,l,taille)            
 
-                return L,M
-
-
-    
-
+                return L,M    
 
 def casescheck(L,M,i,j):
     Ni = []
