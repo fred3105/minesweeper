@@ -543,4 +543,11 @@ def find_max_weight_cell(weights, player_info):
 
 
 if __name__ == "__main__":
-    gather_solver_statistics(20, 10, 1000)
+    # Should take less than a second
+    gather_solver_statistics(20, 10, 10)
+
+    # Should take less than 10 seconds
+    # gather_solver_statistics(20, 10, 100)
+
+    # Should take between 1-2 minutes
+    # gather_solver_statistics(20, 10, 1000)
