@@ -79,7 +79,6 @@ def solve_with_max_strategy(play_function, logic_function, size, num_mines):
 
     while not is_finished:
         if not (not is_dead and stuck_counter < 4):
-            # Make a guess based on maximum weight
             weights = calculate_weights(player_info)
             x, y = find_max_weight_cell(weights, player_info)
             is_dead, known_cells, player_info, is_finished = play_function(
@@ -91,7 +90,6 @@ def solve_with_max_strategy(play_function, logic_function, size, num_mines):
             stuck_counter = 0
 
         prev_safe_cells = current_safe_cells
-        # Place flags around cells identified as mines
         for x, y in mine_cells:
             for dx, dy in [
                 (-1, -1),
@@ -120,7 +118,6 @@ def solve_with_max_strategy(play_function, logic_function, size, num_mines):
                         return "Partie perdu", turns
                     flags_placed += 1
 
-        # Reveal safe cells
         for x, y in safe_cells:
             for dx, dy in [
                 (-1, -1),
@@ -185,12 +182,14 @@ def is_valid(grid, x, y):
 
 
 def find_interesting_cells(player_info):
-    """Identify cells with numbers (not 'X', 'f', or '0')."""
+    """Identify cells with numbers that have at least one unknown neighbor."""
     cells = []
-    for i in range(len(player_info)):
-        for j in range(len(player_info)):
+    for i in range(player_info.shape[0]):
+        for j in range(player_info.shape[1]):
             val = player_info[i, j]
-            if val not in (UNKNOWN_CHAR, FLAG_CHAR, "0"):
+            if val not in (UNKNOWN_CHAR, FLAG_CHAR, "0") and has_unknown_neighbor(
+                player_info, i, j
+            ):
                 cells.append((i, j))
     return cells
 
@@ -221,6 +220,19 @@ def find_safe_cells(safe_cells, player_info, size):
         if flag_count == int(player_info[x, y]):
             safe_cells_list.append((x, y))
     return safe_cells_list
+
+
+def has_unknown_neighbor(player_info, x, y):
+    """Check if the cell at (x, y) has at least one unknown neighbor."""
+    for dx in [-1, 0, 1]:
+        for dy in [-1, 0, 1]:
+            if dx == 0 and dy == 0:
+                continue
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < player_info.shape[0] and 0 <= ny < player_info.shape[1]:
+                if player_info[nx, ny] == UNKNOWN_CHAR:
+                    return True
+    return False
 
 
 def check_elementary_logic(player_info):
@@ -395,15 +407,12 @@ def make_move(
 
 
 def update_player_info(player_info, known_cells, neighbor_mines, size):
-    """Update the player's view based on known cells."""
-    for i in range(size):
-        for j in range(size):
-            if known_cells[i, j] == REVEALED:
-                player_info[i, j] = str(neighbor_mines[i, j])
-            elif known_cells[i, j] == FLAGGED:
-                player_info[i, j] = FLAG_CHAR
-            else:
-                player_info[i, j] = UNKNOWN_CHAR
+    """Update the player's view using vectorized NumPy operations."""
+    revealed_mask = known_cells == REVEALED
+    flagged_mask = known_cells == FLAGGED
+    player_info[revealed_mask] = neighbor_mines[revealed_mask].astype(str)
+    player_info[flagged_mask] = FLAG_CHAR
+    player_info[~revealed_mask & ~flagged_mask] = UNKNOWN_CHAR
 
 
 def play_manually(size, num_mines):
