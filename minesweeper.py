@@ -58,28 +58,52 @@ def gather_solver_statistics(size, num_mines, sample_size):
     return "Completed"
 
 
+def precompute_neighbors(size):
+    """Precompute valid neighbors for each cell."""
+    neighbors = {}
+    for i in range(size):
+        for j in range(size):
+            neigh = []
+            for di, dj in [
+                (-1, -1),
+                (-1, 0),
+                (-1, 1),
+                (0, -1),
+                (0, 1),
+                (1, -1),
+                (1, 0),
+                (1, 1),
+            ]:
+                ni, nj = i + di, j + dj
+                if 0 <= ni < size and 0 <= nj < size:
+                    neigh.append((ni, nj))
+            neighbors[(i, j)] = neigh
+    return neighbors
+
+
 def solve_with_max_strategy(play_function, logic_function, size, num_mines):
-    """Solve Minesweeper using elementary logic and maximum weight guessing when stuck."""
     turns = 0
     flags_placed = 0
     is_dead = False
     is_finished = False
     stuck_counter = 0
-    prev_safe_cells = []
-    current_safe_cells = [1]
+    neighbors = precompute_neighbors(size)
+    processed_cells = set()
+    changed_cells = set()
 
     mine_grid, neighbor_mines, known_cells = setup_grid(
         size, num_mines, size // 2, size // 2
     )
     player_info = np.full((size, size), UNKNOWN_CHAR, dtype=object)
     update_player_info(player_info, known_cells, neighbor_mines, size)
+    changed_cells.add((size // 2, size // 2))
 
-    mine_cells = logic_function(player_info)
-    safe_cells = find_safe_cells([], player_info, size)
+    mine_cells = set(logic_function(player_info))
+    safe_cells = set(find_safe_cells(set(), player_info, size))
 
     while not is_finished:
-        if not (not is_dead and stuck_counter < 4):
-            weights = calculate_weights(player_info)
+        if stuck_counter >= 4:
+            weights = calculate_weights(player_info, changed_cells, neighbors)
             x, y = find_max_weight_cell(weights, player_info)
             is_dead, known_cells, player_info, is_finished = play_function(
                 mine_grid, neighbor_mines, known_cells, player_info, size, "oui", x, y
@@ -88,65 +112,41 @@ def solve_with_max_strategy(play_function, logic_function, size, num_mines):
             if is_dead:
                 return "Partie perdu", turns
             stuck_counter = 0
+            changed_cells = {(x, y)}
 
-        prev_safe_cells = current_safe_cells
+        # Single-pass processing
+        actions = set()  # (x, y, is_mine) tuples
         for x, y in mine_cells:
-            for dx, dy in [
-                (-1, -1),
-                (-1, 0),
-                (-1, 1),
-                (0, -1),
-                (0, 1),
-                (1, -1),
-                (1, 0),
-                (1, 1),
-            ]:
-                nx, ny = x + dx, y + dy
-                if is_valid(mine_grid, nx, ny) and player_info[nx, ny] == UNKNOWN_CHAR:
-                    is_dead, known_cells, player_info, is_finished = play_function(
-                        mine_grid,
-                        neighbor_mines,
-                        known_cells,
-                        player_info,
-                        size,
-                        "oui",
-                        nx,
-                        ny,
-                    )
-                    turns += 1
-                    if is_dead:
-                        return "Partie perdu", turns
-                    flags_placed += 1
-
+            for nx, ny in neighbors[(x, y)]:
+                if (nx, ny) not in processed_cells and player_info[
+                    nx, ny
+                ] == UNKNOWN_CHAR:
+                    actions.add((nx, ny, True))
         for x, y in safe_cells:
-            for dx, dy in [
-                (-1, -1),
-                (-1, 0),
-                (-1, 1),
-                (0, -1),
-                (0, 1),
-                (1, -1),
-                (1, 0),
-                (1, 1),
-            ]:
-                nx, ny = x + dx, y + dy
-                if is_valid(mine_grid, nx, ny) and player_info[nx, ny] == UNKNOWN_CHAR:
-                    is_dead, known_cells, player_info, is_finished = play_function(
-                        mine_grid,
-                        neighbor_mines,
-                        known_cells,
-                        player_info,
-                        size,
-                        "non",
-                        nx,
-                        ny,
-                    )
-                    turns += 1
-                    if is_dead:
-                        return "Partie perdu", turns
+            for nx, ny in neighbors[(x, y)]:
+                if (nx, ny) not in processed_cells and player_info[
+                    nx, ny
+                ] == UNKNOWN_CHAR:
+                    actions.add((nx, ny, False))
 
-        safe_cells = find_safe_cells([], player_info, size)
-        mine_cells = logic_function(player_info)
+        for x, y, is_mine in actions:
+            is_dead, known_cells, player_info, is_finished = play_function(
+                mine_grid,
+                neighbor_mines,
+                known_cells,
+                player_info,
+                size,
+                "oui" if is_mine else "non",
+                x,
+                y,
+            )
+            turns += 1
+            if is_dead:
+                return "Partie perdu", turns
+            processed_cells.add((x, y))
+            changed_cells.add((x, y))
+            if is_mine:
+                flags_placed += 1
 
         if flags_placed == num_mines:
             for i in range(size):
@@ -164,9 +164,10 @@ def solve_with_max_strategy(play_function, logic_function, size, num_mines):
                         )
                         turns += 1
 
-        current_safe_cells = [(x, y) for x, y in safe_cells]
-        if current_safe_cells == prev_safe_cells:
-            stuck_counter += 1
+        prev_safe_cells = safe_cells
+        safe_cells = set(find_safe_cells(set(), player_info, size))
+        mine_cells = set(logic_function(player_info))
+        stuck_counter = stuck_counter + 1 if safe_cells == prev_safe_cells else 0
 
         if is_finished and not is_dead:
             return "grille resolue", turns
@@ -468,21 +469,31 @@ def play_manually(size, num_mines):
             print(player_info)
 
 
-def calculate_weights(player_info):
-    """Calculate weights for unknown cells based on adjacent numbers."""
+def calculate_weights(player_info, changed_cells, neighbors):
+    """Incrementally update weights based on changed cells."""
     size = player_info.shape[0]
-    weights = np.zeros(shape=(size, size), dtype=float)
-    for i in range(size):
-        for j in range(size):
-            if player_info[i, j] not in (UNKNOWN_CHAR, FLAG_CHAR):
-                unknowns_x, unknowns_y, unknown_count = get_unknown_neighbors(
-                    player_info, i, j
-                )
-                if unknown_count > 0:
-                    flag_count = count_flags(player_info, i, j)
-                    weight = (int(player_info[i, j]) - flag_count) / unknown_count
-                    for ux, uy in zip(unknowns_x, unknowns_y):
-                        weights[ux, uy] += weight
+    weights = np.zeros((size, size), dtype=float)
+    interesting_cells = set()
+    for x, y in changed_cells:
+        interesting_cells.update(
+            (nx, ny)
+            for nx, ny in neighbors[(x, y)]
+            if player_info[nx, ny] not in (UNKNOWN_CHAR, FLAG_CHAR, "0")
+        )
+    for i, j in interesting_cells:
+        if not has_unknown_neighbor(player_info, i, j):
+            continue
+        unknowns = [
+            n for n in neighbors[(i, j)] if player_info[n[0], n[1]] == UNKNOWN_CHAR
+        ]
+        unknown_count = len(unknowns)
+        if unknown_count > 0:
+            flag_count = sum(
+                1 for n in neighbors[(i, j)] if player_info[n[0], n[1]] == FLAG_CHAR
+            )
+            weight = (int(player_info[i, j]) - flag_count) / unknown_count
+            for ux, uy in unknowns:
+                weights[ux, uy] += weight
     return weights
 
 
